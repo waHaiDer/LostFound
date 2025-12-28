@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#2B7CEE</color>
+    <color name="primary_dark">#1E5BB3</color>
+
+    <color name="background_light">#F6F7F8</color>
+    <color name="surface_white">#FFFFFF</color>
+
+    <color name="text_main">#0D131B</color>
+    <color name="text_secondary">#64748B</color>
+
+    <color name="lost_bg">#FEF2F2</color>
+    <color name="lost_text">#DC2626</color>
+    <color name="found_bg">#F0FDF4</color>
+    <color name="found_text">#16A34A</color>
+
+    <color name="divider">#E2E8F0</color>
+    <color name="search_bg">#F6F7F8</color>
+</resources>
