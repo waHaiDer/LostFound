@@ -117,7 +117,7 @@ def upload_photo(base64_data: str, report_id: str) -> str:
 # ------------------ AUTH ------------------
 
 def handle_auth(client_socket, message: str):
-    """Handle authentication and return username if successful"""
+    """Handle authentication using Supabase Auth"""
     parts = message.split("::")
     if len(parts) < 4:
         safe_send(client_socket, "AUTH_FAIL::FORMAT")
@@ -126,69 +126,113 @@ def handle_auth(client_socket, message: str):
     command = parts[1]
 
     if command == "LOGIN":
-        username = parts[2]
+        email = parts[2]
         password = parts[3]
 
-        resp = (
-            supabase.table("users")
-            .select("*")
-            .eq("username", username)
-            .eq("password", password)
-            .execute()
-        )
+        try:
+            # Use Supabase Auth for login
+            auth_response = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
 
-        if resp.data:
-            u = resp.data[0]
-            phone = u.get("phone") or ""
-            line = u.get("line_id") or ""
-            # Register user socket for targeted messaging
-            register_user_socket(username, client_socket)
-            safe_send(client_socket, f"AUTH_SUCCESS::{username}::{phone}::{line}")
-            # Send unread counts
-            send_unread_counts(client_socket, username)
-            return username
-        else:
-            safe_send(client_socket, "AUTH_FAIL::Invalid Credentials")
+            if auth_response.user:
+                user_id = auth_response.user.id
+                user_email = auth_response.user.email
+
+                # Get profile data from profiles table
+                profile = supabase.table("profiles").select("*").eq("id", user_id).execute()
+                phone = ""
+                line = ""
+                if profile.data:
+                    phone = profile.data[0].get("phone") or ""
+                    line = profile.data[0].get("line_id") or ""
+
+                # Register user socket for targeted messaging
+                register_user_socket(user_email, client_socket)
+                safe_send(client_socket, f"AUTH_SUCCESS::{user_email}::{phone}::{line}")
+                # Send unread counts
+                send_unread_counts(client_socket, user_email)
+                return user_email
+            else:
+                safe_send(client_socket, "AUTH_FAIL::Invalid Credentials")
+                return None
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[AUTH ERROR] Login failed: {error_msg}")
+            if "Invalid login credentials" in error_msg:
+                safe_send(client_socket, "AUTH_FAIL::Invalid Credentials")
+            else:
+                safe_send(client_socket, f"AUTH_FAIL::{error_msg[:50]}")
             return None
 
     elif command == "SIGNUP":
-        username = parts[2]
+        email = parts[2]
         password = parts[3]
         phone = parts[4] if len(parts) > 4 else ""
         line = parts[5] if len(parts) > 5 else ""
 
-        exists = supabase.table("users").select("id").eq("username", username).execute()
-        if exists.data:
-            safe_send(client_socket, "AUTH_FAIL::Username taken")
+        try:
+            # Use Supabase Auth for signup
+            auth_response = supabase.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+
+            if auth_response.user:
+                user_id = auth_response.user.id
+                user_email = auth_response.user.email
+
+                # Create profile with additional data
+                supabase.table("profiles").upsert({
+                    "id": user_id,
+                    "email": user_email,
+                    "phone": phone,
+                    "line_id": line
+                }).execute()
+
+                # Register user socket for targeted messaging
+                register_user_socket(user_email, client_socket)
+                safe_send(client_socket, f"AUTH_SUCCESS::{user_email}::{phone}::{line}")
+                return user_email
+            else:
+                safe_send(client_socket, "AUTH_FAIL::Signup failed")
+                return None
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[AUTH ERROR] Signup failed: {error_msg}")
+            if "already registered" in error_msg.lower():
+                safe_send(client_socket, "AUTH_FAIL::Email already registered")
+            else:
+                safe_send(client_socket, f"AUTH_FAIL::{error_msg[:50]}")
             return None
-
-        supabase.table("users").insert({
-            "username": username,
-            "password": password,
-            "phone": phone,
-            "line_id": line
-        }).execute()
-
-        # Register user socket for targeted messaging
-        register_user_socket(username, client_socket)
-        safe_send(client_socket, f"AUTH_SUCCESS::{username}::{phone}::{line}")
-        return username
 
     elif command == "UPDATE":
         if len(parts) < 5:
             safe_send(client_socket, "UPDATE_FAIL::FORMAT")
             return None
 
-        username = parts[2]
+        email = parts[2]
         phone = parts[3]
         line = parts[4]
 
-        supabase.table("users").update({
-            "phone": phone,
-            "line_id": line
-        }).eq("username", username).execute()
-
-        safe_send(client_socket, "UPDATE_SUCCESS")
+        try:
+            # Get user ID from email in profiles table
+            profile = supabase.table("profiles").select("id").eq("email", email).execute()
+            if profile.data:
+                user_id = profile.data[0]["id"]
+                supabase.table("profiles").update({
+                    "phone": phone,
+                    "line_id": line
+                }).eq("id", user_id).execute()
+                safe_send(client_socket, "UPDATE_SUCCESS")
+            else:
+                safe_send(client_socket, "UPDATE_FAIL::USER_NOT_FOUND")
+        except Exception as e:
+            print(f"[AUTH ERROR] Update failed: {e}")
+            safe_send(client_socket, "UPDATE_FAIL::ERROR")
         return None
 
     return None

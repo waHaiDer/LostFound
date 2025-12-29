@@ -44,7 +44,7 @@ public class LoginActivity extends AppCompatActivity {
             Toast.makeText(this, "LOGIN clicked", Toast.LENGTH_SHORT).show();
 
             if (user.isEmpty() || pass.isEmpty()) {
-                Toast.makeText(this, "Please enter username & password", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Please enter email & password", Toast.LENGTH_SHORT).show();
                 return;
             }
 
@@ -59,7 +59,7 @@ public class LoginActivity extends AppCompatActivity {
             Toast.makeText(this, "SIGNUP clicked", Toast.LENGTH_SHORT).show();
 
             if (user.isEmpty() || pass.isEmpty()) {
-                Toast.makeText(this, "Please enter username & password", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Please enter email & password", Toast.LENGTH_SHORT).show();
                 return;
             }
 
