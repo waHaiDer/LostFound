@@ -1,0 +1,13 @@
+# Documentation files
+PRD_LostFound.md
+STORIES_LostFound.md
+
+# Screenshots
+*.png
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
