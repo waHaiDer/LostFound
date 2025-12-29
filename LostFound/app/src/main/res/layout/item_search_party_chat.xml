@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="4dp">
+
+    <!-- Other user's message (left aligned) -->
+    <LinearLayout
+        android:id="@+id/otherMessageLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="start"
+        android:maxWidth="280dp">
+
+        <TextView
+            android:id="@+id/otherUsername"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:layout_marginStart="8dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="bottom">
+
+            <TextView
+                android:id="@+id/otherMessage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/chat_bubble_other"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:padding="10dp"/>
+
+            <TextView
+                android:id="@+id/otherTimestamp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_secondary"
+                android:textSize="10sp"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="2dp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- My message (right aligned) -->
+    <LinearLayout
+        android:id="@+id/myMessageLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="end"
+        android:gravity="bottom"
+        android:maxWidth="280dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/myTimestamp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="10sp"
+            android:layout_marginEnd="4dp"
+            android:layout_marginBottom="2dp"/>
+
+        <TextView
+            android:id="@+id/myMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/chat_bubble_mine"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
+            android:padding="10dp"/>
+    </LinearLayout>
+
+</LinearLayout>

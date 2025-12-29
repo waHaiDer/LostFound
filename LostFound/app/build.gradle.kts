@@ -45,12 +45,6 @@ dependencies {
     // EXIF support for image rotation
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
-    // OSMDroid for map view (Sprint 5 - Location Sharing)
-    implementation("org.osmdroid:osmdroid-android:6.1.18")
-
-    // Google Play Services Location for GPS
-    implementation("com.google.android.gms:play-services-location:21.0.1")
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

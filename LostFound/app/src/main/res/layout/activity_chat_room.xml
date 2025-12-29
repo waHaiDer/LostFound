@@ -50,16 +50,6 @@
                 android:textColor="@color/found_text"
                 android:textSize="12sp"/>
         </LinearLayout>
-
-        <ImageView
-            android:id="@+id/btnShareLocation"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:src="@android:drawable/ic_menu_mylocation"
-            app:tint="@color/primary"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Share Location"
-            android:padding="4dp"/>
     </LinearLayout>
 
     <!-- Messages List -->

@@ -223,6 +223,17 @@
                 android:layout_marginBottom="16dp"
                 android:visibility="gone" />
 
+            <!-- Search Party Button (for owner of LOST items) -->
+            <Button
+                android:id="@+id/btnSearchParty"
+                style="@style/Widget.MaterialComponents.Button"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Start Search Party"
+                android:backgroundTint="@color/primary"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone" />
+
             <!-- Comments Section -->
             <View
                 android:layout_width="match_parent"

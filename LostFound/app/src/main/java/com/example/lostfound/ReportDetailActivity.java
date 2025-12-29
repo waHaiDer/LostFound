@@ -40,7 +40,7 @@ public class ReportDetailActivity extends AppCompatActivity {
 
     private TextInputEditText etType, etName, etColor, etLocation, etDescription, etDate;
     private MaterialAutoCompleteTextView dropdownCategory;
-    private Button btnSave, btnContact, btnClaim, btnViewClaims;
+    private Button btnSave, btnContact, btnClaim, btnViewClaims, btnSearchParty;
     private TextView tvOwnerBadge, tvCommentCount, tvNoComments;
     private RecyclerView commentsRecyclerView;
     private EditText etCommentInput;
@@ -85,6 +85,7 @@ public class ReportDetailActivity extends AppCompatActivity {
         btnContact = findViewById(R.id.btnContact);
         btnClaim = findViewById(R.id.btnClaim);
         btnViewClaims = findViewById(R.id.btnViewClaims);
+        btnSearchParty = findViewById(R.id.btnSearchParty);
         tvOwnerBadge = findViewById(R.id.tvOwnerBadge);
 
         // Comments
@@ -141,6 +142,12 @@ public class ReportDetailActivity extends AppCompatActivity {
             if ("FOUND".equalsIgnoreCase(reportType)) {
                 btnViewClaims.setVisibility(View.VISIBLE);
                 btnViewClaims.setOnClickListener(v -> openClaimsActivity());
+            }
+
+            // Owner of LOST items can start search party
+            if ("LOST".equalsIgnoreCase(reportType)) {
+                btnSearchParty.setVisibility(View.VISIBLE);
+                btnSearchParty.setOnClickListener(v -> startSearchParty());
             }
         } else {
             // Non-owner can contact and claim
@@ -329,6 +336,15 @@ public class ReportDetailActivity extends AppCompatActivity {
         Intent intent = new Intent(this, ClaimsActivity.class);
         intent.putExtra("reportId", reportId);
         intent.putExtra("reportName", safe(etName));
+        startActivity(intent);
+    }
+
+    private void startSearchParty() {
+        Intent intent = new Intent(this, SearchPartyActivity.class);
+        intent.putExtra("sessionId", java.util.UUID.randomUUID().toString());
+        intent.putExtra("reportId", reportId);
+        intent.putExtra("itemName", safe(etName));
+        intent.putExtra("isCreator", true);
         startActivity(intent);
     }
 

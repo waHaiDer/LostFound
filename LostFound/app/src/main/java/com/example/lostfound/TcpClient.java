@@ -285,40 +285,61 @@ public class TcpClient {
         send("PRESENCE::CHECK::" + username);
     }
 
-    // ---- Sprint 5: Location Sharing Methods ----
+    // ---- Search Party Methods ----
 
     /**
-     * Start a location sharing session with another user
+     * Create a new search party session
      */
-    public void startLocationSession(String sessionId, String fromUser, String toUser) {
-        send("LOCATION::START::" + sessionId + "::" + fromUser + "::" + toUser);
+    public void createSearchParty(String sessionId, String creator, String reportId, String itemName) {
+        send("SEARCH_PARTY::CREATE::" + sessionId + "::" + creator + "::" + reportId + "::" + itemName);
     }
 
     /**
-     * Accept a location session invitation
+     * Join an existing search party
      */
-    public void acceptLocationSession(String sessionId, String username) {
-        send("LOCATION::ACCEPT::" + sessionId + "::" + username);
+    public void joinSearchParty(String sessionId, String username) {
+        send("SEARCH_PARTY::JOIN::" + sessionId + "::" + username);
     }
 
     /**
-     * Decline a location session invitation
+     * Leave a search party
      */
-    public void declineLocationSession(String sessionId, String username) {
-        send("LOCATION::DECLINE::" + sessionId + "::" + username);
+    public void leaveSearchParty(String sessionId, String username) {
+        send("SEARCH_PARTY::LEAVE::" + sessionId + "::" + username);
     }
 
     /**
-     * Send location update during active session
+     * Update zone status in search party
      */
-    public void sendLocationUpdate(String sessionId, String username, double latitude, double longitude, float accuracy) {
-        send("LOCATION::UPDATE::" + sessionId + "::" + username + "::" + latitude + "::" + longitude + "::" + accuracy);
+    public void updateSearchPartyZone(String sessionId, String username, String zone, String status) {
+        send("SEARCH_PARTY::UPDATE::" + sessionId + "::" + username + "::" + zone + "::" + status);
     }
 
     /**
-     * End a location sharing session
+     * End a search party session
      */
-    public void endLocationSession(String sessionId, String username) {
-        send("LOCATION::END::" + sessionId + "::" + username);
+    public void endSearchParty(String sessionId, String username) {
+        send("SEARCH_PARTY::END::" + sessionId + "::" + username);
+    }
+
+    /**
+     * Invite user to search party
+     */
+    public void inviteToSearchParty(String sessionId, String fromUser, String toUser) {
+        send("SEARCH_PARTY::INVITE::" + sessionId + "::" + fromUser + "::" + toUser);
+    }
+
+    /**
+     * Get search party status
+     */
+    public void getSearchPartyStatus(String sessionId) {
+        send("SEARCH_PARTY::GET::" + sessionId);
+    }
+
+    /**
+     * Send chat message in search party
+     */
+    public void sendSearchPartyChat(String sessionId, String username, String message) {
+        send("SEARCH_PARTY::CHAT::" + sessionId + "::" + username + "::" + message);
     }
 }

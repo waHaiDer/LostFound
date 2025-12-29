@@ -22,7 +22,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 public class ChatRoomActivity extends AppCompatActivity {
 
@@ -30,7 +29,6 @@ public class ChatRoomActivity extends AppCompatActivity {
     private RecyclerView messagesRecyclerView;
     private EditText messageInput;
     private ImageView btnSend;
-    private ImageView btnShareLocation;
     private TextView chatUsername;
     private TextView chatStatus;
     private TextView typingIndicator;
@@ -77,7 +75,6 @@ public class ChatRoomActivity extends AppCompatActivity {
         messagesRecyclerView = findViewById(R.id.messagesRecyclerView);
         messageInput = findViewById(R.id.messageInput);
         btnSend = findViewById(R.id.btnSend);
-        btnShareLocation = findViewById(R.id.btnShareLocation);
         chatUsername = findViewById(R.id.chatUsername);
         chatStatus = findViewById(R.id.chatStatus);
         typingIndicator = findViewById(R.id.typingIndicator);
@@ -87,9 +84,6 @@ public class ChatRoomActivity extends AppCompatActivity {
 
         chatUsername.setText(otherUser);
         chatStatus.setText("Connecting...");
-
-        // Location sharing button
-        btnShareLocation.setOnClickListener(v -> startLocationSharing());
     }
 
     private void setupRecyclerView() {
@@ -261,51 +255,6 @@ public class ChatRoomActivity extends AppCompatActivity {
             }
             return;
         }
-
-        // Location session invitation
-        if (msg.startsWith("LOCATION::SESSION_INVITE::")) {
-            String[] parts = msg.split("::");
-            if (parts.length >= 4) {
-                String sessionId = parts[2];
-                String fromUser = parts[3];
-                if (fromUser.equals(otherUser)) {
-                    showLocationInvitation(sessionId, fromUser);
-                }
-            }
-        }
-    }
-
-    private void startLocationSharing() {
-        new AlertDialog.Builder(this)
-                .setTitle("Share Location")
-                .setMessage("Share your real-time location with " + otherUser + " to coordinate the item handoff?")
-                .setPositiveButton("Share", (dialog, which) -> {
-                    String sessionId = UUID.randomUUID().toString();
-                    Intent intent = new Intent(this, LocationSharingActivity.class);
-                    intent.putExtra("otherUser", otherUser);
-                    intent.putExtra("sessionId", sessionId);
-                    intent.putExtra("isInitiator", true);
-                    startActivity(intent);
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    private void showLocationInvitation(String sessionId, String fromUser) {
-        new AlertDialog.Builder(this)
-                .setTitle("Location Sharing Request")
-                .setMessage(fromUser + " wants to share locations with you for item handoff. Accept?")
-                .setPositiveButton("Accept", (dialog, which) -> {
-                    Intent intent = new Intent(this, LocationSharingActivity.class);
-                    intent.putExtra("otherUser", fromUser);
-                    intent.putExtra("sessionId", sessionId);
-                    intent.putExtra("isInitiator", false);
-                    startActivity(intent);
-                })
-                .setNegativeButton("Decline", (dialog, which) -> {
-                    tcpClient.declineLocationSession(sessionId, currentUser);
-                })
-                .show();
     }
 
     private void sendMessage() {

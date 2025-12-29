@@ -176,6 +176,12 @@ public class MainActivity extends AppCompatActivity {
         tcpClient = new TcpClient(ServerConfig.SERVER_IP, ServerConfig.SERVER_PORT, msg -> runOnUiThread(() -> onServerMessage(msg)));
         tcpClient.connect();
 
+        // Register socket so server can send targeted messages (invites, notifications)
+        String username = UserIdentity.getID(this);
+        if (username != null) {
+            tcpClient.send("REGISTER_SOCKET::" + username);
+        }
+
         fabReport.setOnClickListener(v -> reportLauncher.launch(new Intent(MainActivity.this, Report.class)));
     }
 
@@ -356,6 +362,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
+        // Re-register socket in case another activity overwrote it
+        if (tcpClient != null) {
+            String username = UserIdentity.getID(this);
+            if (username != null) {
+                tcpClient.send("REGISTER_SOCKET::" + username);
+            }
+        }
+
         // ✅ Only load once per app session, or you can force refresh by setting initialLoadDone=false when needed.
         if (!initialLoadDone && tcpClient != null) {
             resetFeedAndDedupe();
@@ -446,6 +460,33 @@ public class MainActivity extends AppCompatActivity {
             }
             return;
         }
+
+        // Handle search party invitation
+        if (msg.startsWith("SEARCH_PARTY::INVITE::")) {
+            String[] parts = msg.split("::");
+            if (parts.length >= 5) {
+                String sessionId = parts[2];
+                String fromUser = parts[3];
+                String itemName = parts[4];
+                showSearchPartyInvite(sessionId, fromUser, itemName);
+            }
+            return;
+        }
+    }
+
+    private void showSearchPartyInvite(String sessionId, String fromUser, String itemName) {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Search Party Invitation")
+                .setMessage(fromUser + " needs help finding: " + itemName + "\n\nJoin the search party?")
+                .setPositiveButton("Join", (dialog, which) -> {
+                    Intent intent = new Intent(this, SearchPartyActivity.class);
+                    intent.putExtra("sessionId", sessionId);
+                    intent.putExtra("itemName", itemName);
+                    intent.putExtra("isCreator", false);
+                    startActivity(intent);
+                })
+                .setNegativeButton("Decline", null)
+                .show();
     }
 
     private void addSearchResultCard(ReportItem report) {

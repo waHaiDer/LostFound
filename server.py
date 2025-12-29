@@ -28,9 +28,23 @@ user_heartbeats_lock = threading.Lock()
 report_subscriptions = {}  # report_id -> set of usernames
 subscriptions_lock = threading.Lock()
 
-# Location sharing sessions (Sprint 5)
-location_sessions = {}  # session_id -> {from_user, to_user, status, start_time}
-location_sessions_lock = threading.Lock()
+# Search Party sessions for collaborative item searching
+search_parties = {}  # session_id -> {creator, report_id, item_name, participants: set, zones: {zone: {status, checked_by, checked_at}}}
+search_parties_lock = threading.Lock()
+
+# Predefined campus zones for search parties
+CAMPUS_ZONES = [
+    "Library",
+    "Cafeteria",
+    "Student Center",
+    "Gymnasium",
+    "Main Building",
+    "Science Building",
+    "Engineering Building",
+    "Dormitory A",
+    "Dormitory B",
+    "Parking Lot"
+]
 
 
 # ------------------ UTILITIES ------------------
@@ -1708,184 +1722,333 @@ def handle_claim_cancel(client_socket, message: str):
         safe_send(client_socket, "CLAIM_CANCEL_FAIL::ERROR")
 
 
-# ------------------ LOCATION SHARING (Sprint 5) ------------------
+# ------------------ SEARCH PARTY ------------------
 
-def handle_location_start(client_socket, message: str):
-    """Start a location sharing session"""
+def handle_search_party_create(client_socket, message: str):
+    """Create a new search party for collaborative item searching"""
     parts = message.split("::")
     if len(parts) < 5:
-        safe_send(client_socket, "LOCATION::FAIL::FORMAT")
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+    creator = parts[3]
+    report_id = parts[4]
+    item_name = parts[5] if len(parts) > 5 else "Unknown Item"
+
+    # Initialize zones with UNCHECKED status
+    zones = {}
+    for zone in CAMPUS_ZONES:
+        zones[zone] = {
+            "status": "UNCHECKED",
+            "checked_by": None,
+            "checked_at": None
+        }
+
+    # Create session
+    with search_parties_lock:
+        search_parties[session_id] = {
+            "creator": creator,
+            "report_id": report_id,
+            "item_name": item_name,
+            "participants": {creator},
+            "zones": zones,
+            "created_at": datetime.now(),
+            "status": "ACTIVE"
+        }
+
+    print(f"[SEARCH_PARTY] Created session {session_id} by {creator} for '{item_name}'")
+
+    # Send success with zone list
+    zones_str = ",".join(CAMPUS_ZONES)
+    safe_send(client_socket, f"SEARCH_PARTY::CREATED::{session_id}::{zones_str}")
+
+
+def handle_search_party_join(client_socket, message: str):
+    """Join an existing search party"""
+    parts = message.split("::")
+    if len(parts) < 4:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+    username = parts[3]
+
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
+
+        session = search_parties[session_id]
+        if session["status"] != "ACTIVE":
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::ENDED")
+            return
+
+        session["participants"].add(username)
+        participants = list(session["participants"])
+        item_name = session["item_name"]
+        zones = session["zones"]
+
+    print(f"[SEARCH_PARTY] {username} joined session {session_id}")
+
+    # Build zone status string: zone1:status1:checker1,zone2:status2:checker2,...
+    zone_status_parts = []
+    for zone, info in zones.items():
+        checker = info["checked_by"] or ""
+        zone_status_parts.append(f"{zone}:{info['status']}:{checker}")
+    zones_str = ",".join(zone_status_parts)
+
+    # Send session info to joiner
+    participants_str = ",".join(participants)
+    safe_send(client_socket, f"SEARCH_PARTY::JOINED::{session_id}::{item_name}::{participants_str}::{zones_str}")
+
+    # Notify all other participants
+    notify_msg = f"SEARCH_PARTY::MEMBER_JOINED::{session_id}::{username}"
+    notify_search_party_members(session_id, notify_msg, exclude=username)
+
+
+def handle_search_party_leave(client_socket, message: str):
+    """Leave a search party"""
+    parts = message.split("::")
+    if len(parts) < 4:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+    username = parts[3]
+
+    session_ended = False
+    participants_to_notify = []
+
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
+
+        session = search_parties[session_id]
+
+        # Save participants BEFORE removing the user (for notification)
+        participants_to_notify = list(session["participants"])
+        session["participants"].discard(username)
+
+        # If creator leaves or no participants, end the session
+        if username == session["creator"] or len(session["participants"]) == 0:
+            session["status"] = "ENDED"
+            del search_parties[session_id]
+            session_ended = True
+            print(f"[SEARCH_PARTY] Session {session_id} ended (creator left or empty)")
+
+    # Notify OUTSIDE the lock to avoid deadlock
+    if session_ended:
+        # Notify remaining members that session ended
+        for participant in participants_to_notify:
+            if participant != username:
+                send_to_user(participant, f"SEARCH_PARTY::ENDED::{session_id}::CREATOR_LEFT")
+        safe_send(client_socket, f"SEARCH_PARTY::LEFT::{session_id}")
+        return
+
+    print(f"[SEARCH_PARTY] {username} left session {session_id}")
+    safe_send(client_socket, f"SEARCH_PARTY::LEFT::{session_id}")
+
+    # Notify other participants
+    notify_search_party_members(session_id, f"SEARCH_PARTY::MEMBER_LEFT::{session_id}::{username}")
+
+
+def handle_search_party_update(client_socket, message: str):
+    """Update a zone's status in search party"""
+    parts = message.split("::")
+    if len(parts) < 5:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+    username = parts[3]
+    zone = parts[4]
+    status = parts[5] if len(parts) > 5 else "CHECKED"  # CHECKED, FOUND, NOT_FOUND
+
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
+
+        session = search_parties[session_id]
+        if session["status"] != "ACTIVE":
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::ENDED")
+            return
+
+        if username not in session["participants"]:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_MEMBER")
+            return
+
+        if zone not in session["zones"]:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::INVALID_ZONE")
+            return
+
+        # Update zone status
+        session["zones"][zone] = {
+            "status": status,
+            "checked_by": username,
+            "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # Check if item was found
+        if status == "FOUND":
+            session["status"] = "COMPLETED"
+            session["found_by"] = username
+            session["found_at"] = zone
+
+    print(f"[SEARCH_PARTY] {username} marked {zone} as {status} in session {session_id}")
+
+    # Broadcast update to all participants
+    update_msg = f"SEARCH_PARTY::ZONE_UPDATE::{session_id}::{zone}::{status}::{username}"
+    notify_search_party_members(session_id, update_msg)
+
+    # If item found, notify everyone
+    if status == "FOUND":
+        found_msg = f"SEARCH_PARTY::ITEM_FOUND::{session_id}::{zone}::{username}"
+        notify_search_party_members(session_id, found_msg)
+
+
+def handle_search_party_end(client_socket, message: str):
+    """End a search party session"""
+    parts = message.split("::")
+    if len(parts) < 4:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+    username = parts[3]
+
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
+
+        session = search_parties[session_id]
+        if username != session["creator"]:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_CREATOR")
+            return
+
+        session["status"] = "ENDED"
+
+    print(f"[SEARCH_PARTY] Session {session_id} ended by {username}")
+
+    # Notify all participants
+    notify_search_party_members(session_id, f"SEARCH_PARTY::ENDED::{session_id}::COMPLETED")
+
+    # Clean up session
+    with search_parties_lock:
+        if session_id in search_parties:
+            del search_parties[session_id]
+
+
+def handle_search_party_invite(client_socket, message: str):
+    """Invite a user to join a search party"""
+    parts = message.split("::")
+    if len(parts) < 5:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
         return
 
     session_id = parts[2]
     from_user = parts[3]
     to_user = parts[4]
 
-    # Create session
-    with location_sessions_lock:
-        location_sessions[session_id] = {
-            "from_user": from_user,
-            "to_user": to_user,
-            "status": "PENDING",
-            "start_time": datetime.now()
-        }
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
 
-    print(f"[LOCATION] Session {session_id}: {from_user} -> {to_user}")
+        session = search_parties[session_id]
+        item_name = session["item_name"]
 
     # Send invitation to target user
-    invite_msg = f"LOCATION::SESSION_INVITE::{session_id}::{from_user}"
+    invite_msg = f"SEARCH_PARTY::INVITE::{session_id}::{from_user}::{item_name}"
     if send_to_user(to_user, invite_msg):
-        safe_send(client_socket, f"LOCATION::INVITE_SENT::{session_id}")
+        safe_send(client_socket, f"SEARCH_PARTY::INVITE_SENT::{session_id}::{to_user}")
+        print(f"[SEARCH_PARTY] {from_user} invited {to_user} to session {session_id}")
     else:
-        # User is offline
-        safe_send(client_socket, f"LOCATION::FAIL::USER_OFFLINE")
-        with location_sessions_lock:
-            if session_id in location_sessions:
-                del location_sessions[session_id]
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::USER_OFFLINE")
 
 
-def handle_location_accept(client_socket, message: str):
-    """Accept a location sharing session"""
+def handle_search_party_get(client_socket, message: str):
+    """Get current search party status"""
     parts = message.split("::")
-    if len(parts) < 4:
-        safe_send(client_socket, "LOCATION::FAIL::FORMAT")
+    if len(parts) < 3:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
+        return
+
+    session_id = parts[2]
+
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
+            return
+
+        session = search_parties[session_id]
+        item_name = session["item_name"]
+        participants = list(session["participants"])
+        zones = session["zones"]
+        status = session["status"]
+
+    # Build zone status string
+    zone_status_parts = []
+    for zone, info in zones.items():
+        checker = info["checked_by"] or ""
+        zone_status_parts.append(f"{zone}:{info['status']}:{checker}")
+    zones_str = ",".join(zone_status_parts)
+
+    participants_str = ",".join(participants)
+    safe_send(client_socket, f"SEARCH_PARTY::STATUS::{session_id}::{status}::{item_name}::{participants_str}::{zones_str}")
+
+
+def notify_search_party_members(session_id: str, msg: str, exclude: str = None):
+    """Send message to all search party participants"""
+    with search_parties_lock:
+        if session_id not in search_parties:
+            return
+        participants = list(search_parties[session_id]["participants"])
+
+    for participant in participants:
+        if participant != exclude:
+            send_to_user(participant, msg)
+
+
+def handle_search_party_chat(client_socket, message: str):
+    """Handle chat message in search party"""
+    parts = message.split("::", 4)  # Limit splits to preserve message content
+    if len(parts) < 5:
+        safe_send(client_socket, "SEARCH_PARTY::FAIL::FORMAT")
         return
 
     session_id = parts[2]
     username = parts[3]
+    chat_message = parts[4]
 
-    with location_sessions_lock:
-        if session_id not in location_sessions:
-            safe_send(client_socket, "LOCATION::FAIL::SESSION_NOT_FOUND")
+    with search_parties_lock:
+        if session_id not in search_parties:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_FOUND")
             return
 
-        session = location_sessions[session_id]
-        if session["to_user"] != username:
-            safe_send(client_socket, "LOCATION::FAIL::NOT_INVITED")
-            return
-
-        session["status"] = "ACTIVE"
-        session["start_time"] = datetime.now()
-
-    # Notify both users
-    started_msg = f"LOCATION::SESSION_STARTED::{session_id}"
-    send_to_user(session["from_user"], started_msg)
-    safe_send(client_socket, started_msg)
-
-    print(f"[LOCATION] Session {session_id} started")
-
-    # Start timeout timer (30 minutes)
-    threading.Thread(target=location_session_timeout, args=(session_id,), daemon=True).start()
-
-
-def handle_location_decline(client_socket, message: str):
-    """Decline a location sharing session"""
-    parts = message.split("::")
-    if len(parts) < 4:
-        safe_send(client_socket, "LOCATION::FAIL::FORMAT")
-        return
-
-    session_id = parts[2]
-    username = parts[3]
-
-    with location_sessions_lock:
-        if session_id not in location_sessions:
-            return
-
-        session = location_sessions[session_id]
-        if session["to_user"] != username:
-            return
-
-        del location_sessions[session_id]
-
-    # Notify initiator
-    declined_msg = f"LOCATION::SESSION_DECLINED::{session_id}"
-    send_to_user(session["from_user"], declined_msg)
-
-    print(f"[LOCATION] Session {session_id} declined")
-
-
-def handle_location_update(client_socket, message: str):
-    """Handle location update from a user"""
-    parts = message.split("::")
-    if len(parts) < 7:
-        return
-
-    session_id = parts[2]
-    username = parts[3]
-    lat = parts[4]
-    lng = parts[5]
-    accuracy = parts[6]
-
-    with location_sessions_lock:
-        if session_id not in location_sessions:
-            return
-
-        session = location_sessions[session_id]
+        session = search_parties[session_id]
         if session["status"] != "ACTIVE":
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::ENDED")
             return
 
-        # Determine the other user
-        if username == session["from_user"]:
-            other_user = session["to_user"]
-        elif username == session["to_user"]:
-            other_user = session["from_user"]
-        else:
+        if username not in session["participants"]:
+            safe_send(client_socket, "SEARCH_PARTY::FAIL::NOT_MEMBER")
             return
 
-    # Relay location to other user
-    update_msg = f"LOCATION::UPDATE::{session_id}::{username}::{lat}::{lng}::{accuracy}"
-    send_to_user(other_user, update_msg)
+        participants = list(session["participants"])
 
+    # Get timestamp
+    timestamp = datetime.now().strftime("%H:%M")
 
-def handle_location_end(client_socket, message: str):
-    """End a location sharing session"""
-    parts = message.split("::")
-    if len(parts) < 4:
-        return
+    print(f"[SEARCH_PARTY_CHAT] {username}: {chat_message}")
 
-    session_id = parts[2]
-    username = parts[3]
-
-    with location_sessions_lock:
-        if session_id not in location_sessions:
-            return
-
-        session = location_sessions[session_id]
-        from_user = session["from_user"]
-        to_user = session["to_user"]
-
-        del location_sessions[session_id]
-
-    # Notify both users
-    ended_msg = f"LOCATION::SESSION_ENDED::{session_id}"
-    send_to_user(from_user, ended_msg)
-    send_to_user(to_user, ended_msg)
-
-    print(f"[LOCATION] Session {session_id} ended by {username}")
-
-
-def location_session_timeout(session_id: str):
-    """Auto-end session after 30 minutes"""
-    import time
-    time.sleep(30 * 60)  # 30 minutes
-
-    with location_sessions_lock:
-        if session_id not in location_sessions:
-            return  # Already ended
-
-        session = location_sessions[session_id]
-        from_user = session["from_user"]
-        to_user = session["to_user"]
-
-        del location_sessions[session_id]
-
-    # Notify both users
-    timeout_msg = f"LOCATION::SESSION_ENDED::{session_id}::TIMEOUT"
-    send_to_user(from_user, timeout_msg)
-    send_to_user(to_user, timeout_msg)
-
-    print(f"[LOCATION] Session {session_id} timed out")
+    # Broadcast chat message to all participants (including sender for confirmation)
+    chat_broadcast = f"SEARCH_PARTY::CHAT::{session_id}::{username}::{timestamp}::{chat_message}"
+    for participant in participants:
+        send_to_user(participant, chat_broadcast)
 
 
 # ------------------ CLIENT LOOP ------------------
@@ -2032,23 +2195,32 @@ def handle_client(client_socket):
                 elif message.startswith("CLAIM::CANCEL::"):
                     handle_claim_cancel(client_socket, message)
 
-                # Location Sharing (Sprint 5)
-                elif message.startswith("LOCATION::START::"):
-                    handle_location_start(client_socket, message)
+                # Search Party
+                elif message.startswith("SEARCH_PARTY::CREATE::"):
+                    handle_search_party_create(client_socket, message)
 
-                elif message.startswith("LOCATION::ACCEPT::"):
-                    handle_location_accept(client_socket, message)
+                elif message.startswith("SEARCH_PARTY::JOIN::"):
+                    handle_search_party_join(client_socket, message)
 
-                elif message.startswith("LOCATION::DECLINE::"):
-                    handle_location_decline(client_socket, message)
+                elif message.startswith("SEARCH_PARTY::LEAVE::"):
+                    handle_search_party_leave(client_socket, message)
 
-                elif message.startswith("LOCATION::UPDATE::"):
-                    handle_location_update(client_socket, message)
+                elif message.startswith("SEARCH_PARTY::UPDATE::"):
+                    handle_search_party_update(client_socket, message)
 
-                elif message.startswith("LOCATION::END::"):
-                    handle_location_end(client_socket, message)
+                elif message.startswith("SEARCH_PARTY::END::"):
+                    handle_search_party_end(client_socket, message)
 
-                # Register socket for user (used by location sharing)
+                elif message.startswith("SEARCH_PARTY::INVITE::"):
+                    handle_search_party_invite(client_socket, message)
+
+                elif message.startswith("SEARCH_PARTY::GET::"):
+                    handle_search_party_get(client_socket, message)
+
+                elif message.startswith("SEARCH_PARTY::CHAT::"):
+                    handle_search_party_chat(client_socket, message)
+
+                # Register socket for user
                 elif message.startswith("REGISTER_SOCKET::"):
                     parts = message.split("::")
                     if len(parts) >= 2:
