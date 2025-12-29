@@ -1,169 +1,134 @@
-package com.example.lostfound; // Note: lostfound (no 'and')
+package com.example.lostfound;
 
 import android.app.DatePickerDialog;
 import android.content.Intent;
-import android.graphics.Color;
-import android.net.Uri;
 import android.os.Bundle;
-import android.view.View;
-import android.widget.ArrayAdapter;
-import android.widget.AutoCompleteTextView;
 import android.widget.Button;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
+import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputEditText;
 
-import java.util.Calendar;
+import android.widget.ArrayAdapter;
+import android.widget.Toast;
 
-public class Report extends AppCompatActivity { // <--- THIS EXTENDS ACTIVITY
+import java.util.Calendar;
+import java.util.Locale;
+
+public class Report extends AppCompatActivity {
 
     private MaterialButtonToggleGroup toggleGroup;
-    private MaterialButton btnOptionLost, btnOptionFound;
     private TextInputEditText etItemName, etColor, etDescription, etLocation, etDate;
-    private AutoCompleteTextView dropdownCategory;
-    private Button btnSubmit;
-    private TextView btnCancel;
+    private MaterialAutoCompleteTextView dropdownCategory;
 
-    // Image Upload
-    private FrameLayout imageUploadContainer;
-    private ImageView ivSelectedImage;
-    private LinearLayout placeholderLayout;
-    private Uri selectedImageUri;
-
-    private ActivityResultLauncher<String> pickImageLauncher;
+    private String reportType = ""; // "LOST" or "FOUND"
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_report); // Points to your XML
+        setContentView(R.layout.activity_report);
 
-        bindViews();
-        setupDropdown();
-        setupToggleLogic();
-        setupImagePicker();
-        setupDatePicker();
-
-        btnCancel.setOnClickListener(v -> finish());
-        btnSubmit.setOnClickListener(v -> submitReport());
-    }
-
-    private void bindViews() {
+        // ===== Bind =====
         toggleGroup = findViewById(R.id.toggleGroup);
-        btnOptionLost = findViewById(R.id.btnOptionLost);
-        btnOptionFound = findViewById(R.id.btnOptionFound);
+        Button btnLost = findViewById(R.id.btnOptionLost);
+        Button btnFound = findViewById(R.id.btnOptionFound);
 
         etItemName = findViewById(R.id.etItemName);
+        dropdownCategory = findViewById(R.id.dropdownCategory);
         etColor = findViewById(R.id.etColor);
+
         etDescription = findViewById(R.id.etDescription);
         etLocation = findViewById(R.id.etLocation);
         etDate = findViewById(R.id.etDate);
 
-        dropdownCategory = findViewById(R.id.dropdownCategory);
-        btnSubmit = findViewById(R.id.btnSubmitReport);
-        btnCancel = findViewById(R.id.btnCancel);
+        Button btnSubmit = findViewById(R.id.btnSubmitReport);
+        TextView btnCancel = findViewById(R.id.btnCancel);
 
-        imageUploadContainer = findViewById(R.id.imageUploadContainer);
-        ivSelectedImage = findViewById(R.id.ivSelectedImage);
-        placeholderLayout = findViewById(R.id.placeholderLayout);
-    }
+        // ===== Cancel =====
+        btnCancel.setOnClickListener(v -> finish());
 
-    private void setupDropdown() {
-        String[] categories = {"Electronics", "Clothing", "ID Cards", "Keys", "Books", "Other"};
+        // ===== Toggle LOST/FOUND =====
+        toggleGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
+            if (checkedId == R.id.btnOptionLost) reportType = "LOST";
+            else if (checkedId == R.id.btnOptionFound) reportType = "FOUND";
+        });
+
+        // ===== Category Dropdown Setup =====
+        String[] categories = {"Electronics", "Wallet", "Keys", "ID Card", "Bag", "Clothing", "Other"};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, categories);
         dropdownCategory.setAdapter(adapter);
-    }
+        dropdownCategory.setText("Electronics", false);
 
-    private void setupToggleLogic() {
-        toggleGroup.check(R.id.btnOptionLost);
-        updateToggleColors(R.id.btnOptionLost);
-
-        toggleGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
-            if (isChecked) {
-                updateToggleColors(checkedId);
-            }
+        // Force dropdown to open reliably
+        dropdownCategory.setOnClickListener(v -> dropdownCategory.showDropDown());
+        dropdownCategory.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) dropdownCategory.showDropDown();
         });
+
+        // ===== Date Picker Setup =====
+        etDate.setOnClickListener(v -> openDatePicker());
+
+        // ===== Submit =====
+        btnSubmit.setOnClickListener(v -> submitReport());
     }
 
-    private void updateToggleColors(int checkedId) {
-        if (checkedId == R.id.btnOptionLost) {
-            btnOptionLost.setBackgroundColor(Color.parseColor("#2B7CEE")); // Blue
-            btnOptionLost.setTextColor(Color.WHITE);
-            btnOptionFound.setBackgroundColor(Color.TRANSPARENT);
-            btnOptionFound.setTextColor(Color.parseColor("#475569"));
-        } else if (checkedId == R.id.btnOptionFound) {
-            btnOptionFound.setBackgroundColor(Color.parseColor("#2B7CEE")); // Blue
-            btnOptionFound.setTextColor(Color.WHITE);
-            btnOptionLost.setBackgroundColor(Color.TRANSPARENT);
-            btnOptionLost.setTextColor(Color.parseColor("#475569"));
-        }
-    }
+    private void openDatePicker() {
+        Calendar cal = Calendar.getInstance();
+        int y = cal.get(Calendar.YEAR);
+        int m = cal.get(Calendar.MONTH);
+        int d = cal.get(Calendar.DAY_OF_MONTH);
 
-    private void setupDatePicker() {
-        etDate.setOnClickListener(v -> {
-            Calendar calendar = Calendar.getInstance();
-            int year = calendar.get(Calendar.YEAR);
-            int month = calendar.get(Calendar.MONTH);
-            int day = calendar.get(Calendar.DAY_OF_MONTH);
-
-            DatePickerDialog datePickerDialog = new DatePickerDialog(
-                    this,
-                    (view, year1, month1, dayOfMonth) -> {
-                        String date = dayOfMonth + "/" + (month1 + 1) + "/" + year1;
-                        etDate.setText(date);
-                    },
-                    year, month, day
-            );
-            datePickerDialog.show();
-        });
-    }
-
-    private void setupImagePicker() {
-        pickImageLauncher = registerForActivityResult(
-                new ActivityResultContracts.GetContent(),
-                uri -> {
-                    if (uri != null) {
-                        selectedImageUri = uri;
-                        ivSelectedImage.setImageURI(uri);
-                        ivSelectedImage.setVisibility(View.VISIBLE);
-                        placeholderLayout.setVisibility(View.GONE);
-                    }
-                }
+        DatePickerDialog dialog = new DatePickerDialog(
+                Report.this,
+                (view, year, month, dayOfMonth) -> {
+                    String date = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth);
+                    etDate.setText(date);
+                },
+                y, m, d
         );
-        imageUploadContainer.setOnClickListener(v -> pickImageLauncher.launch("image/*"));
+        dialog.show();
     }
 
     private void submitReport() {
-        String name = etItemName.getText().toString().trim();
-        String location = etLocation.getText().toString().trim();
-        String color = etColor.getText().toString().trim();
-        String category = dropdownCategory.getText().toString();
-        String desc = etDescription.getText().toString().trim();
-        String date = etDate.getText().toString().trim();
-        boolean isLost = (toggleGroup.getCheckedButtonId() == R.id.btnOptionLost);
-
-        if (name.isEmpty() || location.isEmpty()) {
-            Toast.makeText(this, "Please fill in Item Name and Location", Toast.LENGTH_SHORT).show();
+        if (reportType.isEmpty()) {
+            Toast.makeText(this, "Please select Lost or Found", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        boolean hasImage = (selectedImageUri != null);
+        String name = text(etItemName);
+        String category = dropdownCategory.getText() == null ? "" : dropdownCategory.getText().toString().trim();
+        String color = text(etColor);
+        String location = text(etLocation);
+        String description = text(etDescription);
 
-        // HERE IS THE CHANGE: We use ReportItem now, not Report
-        ReportItem newItem = new ReportItem(isLost, name, category, color, location, desc, date, hasImage);
+        if (name.isEmpty()) {
+            Toast.makeText(this, "Item name is required", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        Intent resultIntent = new Intent();
-        resultIntent.putExtra("REPORT_MESSAGE", newItem.toServerString());
-        setResult(RESULT_OK, resultIntent);
+        // NOTE: your DB schema doesn’t store date yet; we collect it for UI, but do not send to server unless you add column.
+        // If you want to store it later, we’ll extend protocol + DB.
+
+        // Payload expected by MainActivity/server pipeline:
+        // LOST/FOUND::name::category::color::location::description
+        String payload = reportType
+                + "::" + name
+                + "::" + category
+                + "::" + color
+                + "::" + location
+                + "::" + description;
+
+        Intent data = new Intent();
+        data.putExtra("REPORT_MESSAGE", payload);
+        setResult(RESULT_OK, data);
         finish();
+    }
+
+    private String text(TextInputEditText et) {
+        return et.getText() == null ? "" : et.getText().toString().trim();
     }
 }

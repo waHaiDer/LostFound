@@ -117,12 +117,14 @@
                     app:boxCornerRadiusTopEnd="12dp"
                     app:boxCornerRadiusBottomStart="12dp"
                     app:boxCornerRadiusBottomEnd="12dp">
-                    <AutoCompleteTextView
+
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
                         android:id="@+id/dropdownCategory"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:inputType="none"
-                        android:text="Electronics" />
+                        android:focusable="true"
+                        android:clickable="true"/>
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.textfield.TextInputLayout

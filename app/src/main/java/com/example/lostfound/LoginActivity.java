@@ -2,21 +2,23 @@ package com.example.lostfound;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
+
 import com.google.android.material.textfield.TextInputEditText;
 
 public class LoginActivity extends AppCompatActivity {
 
-    private TextInputEditText etEmail, etPassword; // We use etEmail for the Username
+    private TextInputEditText etEmail, etPassword;
     private TcpClient tcpClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 1. Check if already logged in
         if (UserIdentity.isLoggedIn(this)) {
             launchMain();
             return;
@@ -24,65 +26,86 @@ public class LoginActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_login);
 
-        // 2. Link the UI elements
         etEmail = findViewById(R.id.etEmail);
         etPassword = findViewById(R.id.etPassword);
+
         Button btnLogin = findViewById(R.id.btnLogin);
         Button btnSignup = findViewById(R.id.btnSignup);
 
-        // 3. Connect to Python Server (Emulator IP: 10.0.2.2)
-        tcpClient = new TcpClient("10.0.2.2", 5000, this::handleServerResponse);
+        // CONNECT ONCE
+        tcpClient = new TcpClient("10.0.2.2", 12345, this::handleServerResponse);
         tcpClient.connect();
 
-        // 4. Login Button Logic
         btnLogin.setOnClickListener(v -> {
-            String user = etEmail.getText().toString();
-            String pass = etPassword.getText().toString();
-            if (!user.isEmpty() && !pass.isEmpty()) {
-                // SEND: AUTH::LOGIN::username::password
-                tcpClient.send("AUTH::LOGIN::" + user + "::" + pass);
+            String user = getText(etEmail);
+            String pass = getText(etPassword);
+
+            Log.d("AUTH_UI", "LOGIN clicked user=" + user);
+            Toast.makeText(this, "LOGIN clicked", Toast.LENGTH_SHORT).show();
+
+            if (user.isEmpty() || pass.isEmpty()) {
+                Toast.makeText(this, "Please enter username & password", Toast.LENGTH_SHORT).show();
+                return;
             }
+
+            tcpClient.send("AUTH::LOGIN::" + user + "::" + pass);
         });
 
-        // 5. Signup Button Logic
         btnSignup.setOnClickListener(v -> {
-            String user = etEmail.getText().toString();
-            String pass = etPassword.getText().toString();
-            if (!user.isEmpty() && !pass.isEmpty()) {
-                // SEND: AUTH::SIGNUP::username::password
-                tcpClient.send("AUTH::SIGNUP::" + user + "::" + pass);
+            String user = getText(etEmail);
+            String pass = getText(etPassword);
+
+            Log.d("AUTH_UI", "SIGNUP clicked user=" + user);
+            Toast.makeText(this, "SIGNUP clicked", Toast.LENGTH_SHORT).show();
+
+            if (user.isEmpty() || pass.isEmpty()) {
+                Toast.makeText(this, "Please enter username & password", Toast.LENGTH_SHORT).show();
+                return;
             }
+
+            // IMPORTANT: SIGNUP command
+            tcpClient.send("AUTH::SIGNUP::" + user + "::" + pass);
         });
     }
 
+    private String getText(TextInputEditText et) {
+        return et.getText() == null ? "" : et.getText().toString().trim();
+    }
+
     private void handleServerResponse(String message) {
-        // 1. Run on UI Thread so we can change screens
         runOnUiThread(() -> {
-            // 2. CLEAN the message (remove hidden spaces/newlines)
-            String cleanMessage = message.trim();
+            String clean = (message == null) ? "" : message.trim();
+            Log.d("AUTH_NET", "Server: " + clean);
 
-            // Debug Popup: Prove the phone got it
-            // Toast.makeText(this, "Server said: " + cleanMessage, Toast.LENGTH_SHORT).show();
+            if (clean.startsWith("AUTH_SUCCESS")) {
+                String[] parts = clean.split("::");
+                String username = parts.length > 1 ? parts[1] : "";
+                String phone = parts.length > 2 ? parts[2] : "";
+                String line = parts.length > 3 ? parts[3] : "";
 
-            // 3. Check for Success
-            if (cleanMessage.startsWith("AUTH_SUCCESS")) {
-                String[] parts = cleanMessage.split("::");
-                String userId = parts.length > 1 ? parts[1] : "UnknownUser";
-
-                // 4. Save and Launch
-                UserIdentity.saveID(this, userId);
-
-                Toast.makeText(this, "Login Successful!", Toast.LENGTH_SHORT).show();
+                UserIdentity.saveLoginInfo(this, username, phone, line);
+                Toast.makeText(this, "Success: " + username, Toast.LENGTH_SHORT).show();
                 launchMain();
-
-            } else if (cleanMessage.startsWith("AUTH_FAIL")) {
-                Toast.makeText(this, "Login Failed: " + cleanMessage, Toast.LENGTH_SHORT).show();
+                return;
             }
+
+            if (clean.startsWith("AUTH_FAIL")) {
+                Toast.makeText(this, clean, Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Toast.makeText(this, clean, Toast.LENGTH_SHORT).show();
         });
     }
 
     private void launchMain() {
         startActivity(new Intent(this, MainActivity.class));
         finish();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (tcpClient != null) tcpClient.close();
     }
 }
