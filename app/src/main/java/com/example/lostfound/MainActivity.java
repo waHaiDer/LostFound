@@ -94,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
         // ✅ Only load once per app session, or you can force refresh by setting initialLoadDone=false when needed.
         if (!initialLoadDone && tcpClient != null) {
             resetFeedAndDedupe();
+            android.util.Log.d("MAIN", "Sending REPORTS::GET (initialLoadDone=" + initialLoadDone + ")");
             tcpClient.send("REPORTS::GET");
         }
     }
@@ -110,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void onServerMessage(String raw) {
         String msg = raw == null ? "" : raw.trim();
-
+        android.util.Log.d("MAIN", "From server: " + raw);
         if (msg.equals("REPORTS_DONE")) {
             initialLoadDone = true;
             return;
@@ -132,6 +133,7 @@ public class MainActivity extends AppCompatActivity {
     private void addCardToFeed(String rawMessage) {
         ReportItem report = ReportItem.fromServerString(rawMessage);
         if (report == null) return;
+
 
         LayoutInflater inflater = LayoutInflater.from(this);
         View cardView = inflater.inflate(R.layout.item_card, null, false);
@@ -159,6 +161,21 @@ public class MainActivity extends AppCompatActivity {
             btnEdit.setVisibility(View.GONE);
         }
 
+        cardView.setOnClickListener(v -> {
+            Intent i = new Intent(MainActivity.this, ReportDetailActivity.class);
+            i.putExtra("id", report.id);
+            i.putExtra("ownerId", report.ownerId);
+            i.putExtra("type", report.isLost ? "LOST" : "FOUND");
+            i.putExtra("name", report.name);
+            i.putExtra("category", report.category);
+            i.putExtra("color", report.color);
+            i.putExtra("location", report.location);
+            i.putExtra("description", report.description);
+            i.putExtra("reportDate", report.reportDate);
+            startActivity(i);
+        });
+
+
         LinearLayout targetContainer;
         if (report.isLost) {
             tvTag.setText("LOST");
@@ -180,6 +197,7 @@ public class MainActivity extends AppCompatActivity {
 
         targetContainer.addView(cardView, 0);
     }
+
 
     @Override
     protected void onDestroy() {

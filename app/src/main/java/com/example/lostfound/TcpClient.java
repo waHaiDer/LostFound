@@ -1,25 +1,32 @@
 package com.example.lostfound;
 
 import android.util.Log;
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TcpClient {
     public interface MessageListener {
         void onMessageReceived(String message);
     }
 
-    private String serverIp;
-    private int serverPort;
-    private MessageListener messageListener;
+    private final String serverIp;
+    private final int serverPort;
+    private final MessageListener messageListener;
+
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
-    private boolean isRunning = false;
+
+    private volatile boolean isRunning = false;
+    private volatile boolean isConnected = false;
+
+    private final ConcurrentLinkedQueue<String> pending = new ConcurrentLinkedQueue<>();
 
     public TcpClient(String serverIp, int serverPort, MessageListener listener) {
         this.serverIp = serverIp;
@@ -32,16 +39,20 @@ public class TcpClient {
             try {
                 Log.d("TCP", "Connecting to " + serverIp + ":" + serverPort);
                 socket = new Socket(serverIp, serverPort);
-                isRunning = true;
 
                 out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())), true);
                 in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
+                isRunning = true;
+                isConnected = true;
+
                 Log.d("TCP", "Connected!");
 
-                // Listen for incoming messages
+                // Flush anything that tried to send before connection completed
+                flushPending();
+
                 while (isRunning) {
-                    String serverMessage = in.readLine();
+                    String serverMessage = in.readLine(); // needs \n from server
                     if (serverMessage != null && messageListener != null) {
                         Log.d("TCP", "Received: " + serverMessage);
                         messageListener.onMessageReceived(serverMessage);
@@ -51,24 +62,54 @@ public class TcpClient {
                 }
             } catch (Exception e) {
                 Log.e("TCP", "Connection Error", e);
+                isRunning = false;
+                isConnected = false;
             }
         }).start();
     }
 
     public void send(final String message) {
+        // Queue if not connected yet
+        if (!isConnected || out == null) {
+            pending.add(message);
+            Log.d("TCP", "Queued (not connected yet): " + message);
+            return;
+        }
+
         new Thread(() -> {
-            if (out != null && !out.checkError()) {
+            try {
                 Log.d("TCP", "Sending: " + message);
                 out.println(message);
                 out.flush();
+            } catch (Exception e) {
+                Log.e("TCP", "Send error", e);
             }
         }).start();
     }
 
+    private void flushPending() {
+        String msg;
+        while ((msg = pending.poll()) != null) {
+            try {
+                Log.d("TCP", "Flushing queued: " + msg);
+                out.println(msg);
+                out.flush();
+            } catch (Exception e) {
+                Log.e("TCP", "Flush error", e);
+                break;
+            }
+        }
+    }
+
     public void close() {
         isRunning = false;
+        isConnected = false;
         try {
             if (socket != null) socket.close();
+            if (out == null) {
+                String message = "";
+                Log.d("TCP", "send() dropped because out==null (not connected yet): " + message);
+            }
             if (out != null) out.close();
             if (in != null) in.close();
         } catch (Exception e) {
